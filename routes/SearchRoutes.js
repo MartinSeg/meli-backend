@@ -1,85 +1,68 @@
 const express = require('express');
 const axios = require('axios');
+const Item = require('../models/item');
 
 const searchRoutes = express.Router();
+
+const author = {
+    name: "Martin",
+    lastname: "Seghezzo"
+}
 
 searchRoutes.get('/items', async (req, res) => {
 
     const searchedProduct = req.query.q;
     try{
         const response = await axios.get(`https://api.mercadolibre.com/sites/MLA/search?q=${searchedProduct}`);
+        const breadCrumb = response.data.filters[0].values[0].path_from_root.map( c => c.name)
+        const categoryNames = response.data.available_filters[0].values.map( c => c.name);
+
         const items = []
-        const categories = response.data.available_filters[0].values.map( category => category.name);
+
+        if(response.data.results.length === 0){
+            return res.status(404).send({message: 'No se han encontrado resultados relacionados a su búsqueda....'})
+        }
 
         for( let i = 0; i <= 3; i++){
-            const { id, title, price: amount, currency_id, thumbnail, condition, shipping, address  } = response.data.results[i];
-
-            let mappedResult = {
-                id,
-                title,
-                price: {
-                    currency: currency_id,
-                    amount: amount,
-                },
-                picture: thumbnail,
-                condition,
-                free_shipping: shipping.free_shipping,
-                address:  address.city_name  
-            }
-
-            items.push(mappedResult); 
+            let item = new Item(response.data.results[i])
+            items.push(item); 
         }
 
         res.send({
-            author: {
-                name: "Martin",
-                lastname: "Seghezzo"
-            },
-            categories,
-            items
+            author,
+            categories: categoryNames,
+            items,
+            breadCrumb
         })
-
     }catch(err){
-        res.status(500).send({ message: "Ha surgido un error en el servidor o no ha ingresado un valor valido, por favor intente nuevamente" })
+        res.status(500).send({ message: 'error del Servidor'})
     }
 });
 
 searchRoutes.get('/items/:id', async (req, res) => {
 
-    const itemId = req.params.id;
+    const id = req.params.id;
 
     try{
-        const itemInfo = await axios.get(`https://api.mercadolibre.com/items/${itemId}`);
-        const { title , currency_id, price: amount, thumbnail, condition , shipping, sold_quantity, category_id} = itemInfo.data;
-        const itemDescription = await axios.get(`https://api.mercadolibre.com/items/${itemId}/description`);
-        const { plain_text } = itemDescription.data
+        const itemInfo = await axios.get(`https://api.mercadolibre.com/items/${id}`);
+        const itemDescription = await axios.get(`https://api.mercadolibre.com/items/${id}/description`);    
+        const categorieDetails = await axios.get(`https://api.mercadolibre.com/categories/${itemInfo.data.category_id}`);
+        const breadCrumb = categorieDetails.data.path_from_root.map( x => x.name)
 
-        const itemDetails = {
-            author: {
-                name: "Martin",
-                lastname: "seghezzo"
-            },
-            item:{
-                id: itemId,
-                title,
-                price:{
-                    currency: currency_id,
-                    amount,
-                },
-                picture: thumbnail,
-                condition,
-                free_shipping: shipping.free_shipping ,
-                sold_quantity,
-                description:plain_text,
-                category: category_id
-            }
-        }
+        const { plain_text } = itemDescription.data;
+        const item = new Item({id, ...itemInfo.data , plain_text});
 
-        res.status(200).send(itemDetails)
+        res.status(200).send({
+            author,
+            item, 
+            breadCrumb
+        })
 
-    }catch(err){
-        res.status(500).send({message: 'No se ha encontrado el producto seleccionado'})
+    }catch(e){
+        if(e.response.data.status === 404) return res.status(404).send({ message: 'Ha ingresado un codigo no registrado'})
+        res.status(500).send({ message: 'Error del servidor'})
     }
-})  
+
+});
 
 module.exports = searchRoutes
