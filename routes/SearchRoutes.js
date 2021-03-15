@@ -14,9 +14,9 @@ searchRoutes.get('/items', async (req, res) => {
     const searchedProduct = req.query.q;
     try{
         const response = await axios.get(`https://api.mercadolibre.com/sites/MLA/search?q=${searchedProduct}`);
-        const breadCrumb = response.data.filters[0].values[0].path_from_root.map( c => c.name)
         const categoryNames = response.data.available_filters[0].values.map( c => c.name);
-
+        const breadCrumb = response.data.filters[0] && response.data.filters[0].values[0].path_from_root.map( c => c.name);
+        
         const items = []
 
         if(response.data.results.length === 0){
